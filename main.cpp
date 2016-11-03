@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <map>
+#include <unordered_map>
 
 #define MAXTOKENS 8192
 #define MAXNEXTTOKENS 1024
@@ -49,9 +49,9 @@ int is_alpha(char *aString)
 class WordCounter
 {
 public:
-	std::map<int, char*> mWord;
-	std::map<int, int> mFlags, mHits, mHash, mValid;
-	std::map<int, std::map<int, int>> mNext, mNextHit;
+	std::unordered_map<int, char*> mWord;
+	std::unordered_map<int, int> mFlags, mHits, mHash, mValid;
+	std::unordered_map<int, std::unordered_map<int, int>> mNext, mNextHit;
 	int mPrevToken;
 	int mTokens;
     int mWordno;	
