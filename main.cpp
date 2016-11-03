@@ -8,6 +8,43 @@
 #define MAXTOKENS 8192
 #define MAXNEXTTOKENS 1024
 
+struct prevkeys
+{
+	int a, b, c, d;
+	prevkeys()
+	{
+		reset();
+	}
+	void reset()
+	{
+		a = b = c = d = -1;
+	}
+	void shift()
+	{
+		d = c;
+		c = b;
+		b = a;
+		a = -1;
+	}
+	bool operator==(const prevkeys &other) const
+	{
+		return (a == other.a) && (b == other.b) && (c == other.c) && (d == other.d);
+	}
+};
+
+namespace std {
+
+	template <>
+	struct hash<prevkeys>
+	{
+		std::size_t operator()(const prevkeys& k) const
+		{
+			return (k.a << 1)^(k.b << 3)^(k.c << 2)^(k.d);
+		}
+	};
+
+}
+
 int whitespace(char aCharacter)
 {
 	switch (aCharacter)
@@ -33,15 +70,11 @@ int is_numeric(char *aString)
 	return 1;
 }
 
-int is_alpha(char *aString)
+int is_alpha(char *aChar)
 {
-	if (!*aString) return 0;
-	while (*aString)
-	{
-		if (toupper(*aString) < 'A' || toupper(*aString) > 'Z')
-			return 0;
-		aString++;
-	}
+	if (!*aChar) return 0;
+	if (toupper(*aChar) < 'A' || toupper(*aChar) > 'Z')
+		return 0;
 	return 1;
 }
 
@@ -52,6 +85,8 @@ public:
 	std::unordered_map<int, char*> mWord;
 	std::unordered_map<int, int> mFlags, mHits, mHash, mValid;
 	std::unordered_map<int, std::unordered_map<int, int>> mNext, mNextHit;
+	std::unordered_map<prevkeys, std::unordered_map<int, int>> mLongHit;
+	prevkeys mPrevKeys;
 	int mPrevToken;
 	int mTokens;
     int mWordno;	
@@ -66,7 +101,7 @@ public:
 	        aString++;
 		}    
     
-		return 0;
+		return i;
 	}    
 
 	WordCounter()
@@ -78,6 +113,16 @@ public:
 
 	void tokenRef(int aCurrent)
 	{
+		mLongHit[mPrevKeys][aCurrent]++;
+
+		mPrevKeys.shift();
+		mPrevKeys.a = aCurrent;
+
+		if (mWordno == 0)
+			mPrevKeys.reset();
+
+
+
 		int prev = mPrevToken;
 		mPrevToken = aCurrent;
 		if (prev != -1)
@@ -99,12 +144,12 @@ public:
 				mNextHit[prev][i] = 1;
 			}
 		}
-	}		
+	}
 
 	void addWordcountToken(char *aToken)
-	{    
+	{
 		int h = calcHash(aToken);
-		int i;	
+		int i;
 		if (aToken == NULL || *aToken == 0)
 			return;
 
@@ -118,7 +163,7 @@ public:
 				return;
 			}
 		}
-		
+
 		// We don't actually care if we run out of tokens,
 		// as we're looking for the most frequent N tokens
 		// anyway; if a token hasn't appeared during the 
@@ -126,58 +171,63 @@ public:
 		// anyway.
 		if (mTokens < MAXTOKENS)
 		{
+			mWord[mTokens] = _strdup(aToken);
+			mHash[mTokens] = h;
+			mHits[mTokens] = 1;
+			mFlags[mTokens] = (mWordno == 0) ? 2 : (mWordno == 1 && toupper(*aToken) == *aToken) ? 1 : 0;
+			mValid[mTokens] = 0;
 			tokenRef(mTokens);
-			mWord[mTokens]=_strdup(aToken);
-			mHash[mTokens]=h;
-			mHits[mTokens]=1;
-			mFlags[mTokens]=(mWordno == 0) ? 2 : (mWordno == 1 && toupper(*aToken) == *aToken) ? 1 : 0;
-			mValid[mTokens]=0;
-			
-			mTokens++;        
+
+			mTokens++;
 		}
 		else
 		{
 			mPrevToken = -1;
 		}
 	}
-    
+
 	int valid(char *aToken)
-	{	    
-	    int allupper = 1;
-	    int len = 0;
-	    while (*aToken)
-	    {
-	        if ((*aToken >= 'a' && *aToken <= 'z') ||
-	            (*aToken >= 'A' && *aToken <= 'Z') ||
-	            *aToken == '\'' ||
-	            *aToken == ':' ||
-	            *aToken == ';' ||
-	            *aToken == '.' ||
-	            *aToken == '?' ||
-	            *aToken == '!')
-	        {
-	            // Probably valid.
-	            if ((*aToken == ':' ||
-	                *aToken == ';' ||
-	                *aToken == '.' ||
-	                *aToken == '?' ||
-	                *aToken == '!'))
-	            {
-    	            if (*(aToken+1) != 0)
-                    {
-                        return 0; // not valid if not at the end of a string.
-                    }
-                    else
-                    {
+	{
+		int allupper = 1;
+		int len = 0;
+		while (*aToken)
+		{
+			if ((*aToken >= 'a' && *aToken <= 'z') ||
+				(*aToken >= 'A' && *aToken <= 'Z') ||
+				*aToken == '\'' ||
+				*aToken == ':' ||
+				*aToken == ';' ||
+				*aToken == '.' ||
+				*aToken == '?' ||
+				*aToken == '!')
+			{
+				// Probably valid.
+				if ((*aToken == ':' ||
+					*aToken == ';' ||
+					*aToken == '.' ||
+					*aToken == '?' ||
+					*aToken == '!'))
+				{
+					if (*(aToken + 1) != 0)
+					{
+						return 0; // not valid if not at the end of a string.
+					}
+					else
+					{
 						if (mWordno == 0)
-                        {                        
-                            return 0; // and not valid if the only word in the sentence
-                        }
-                	    if (allupper && len > 1 || len < 2)
-                	    {
+						{
+							return 0; // and not valid if the only word in the sentence
+						}
+						if (allupper && len > 1)
+						{
 							mWordno = 0; // all uppercase so we'll skip, but consider end of sentence anyway.
-                	        return 0;
-                	    }
+							return 0;
+						}
+						if (len < 2 && !is_alpha(aToken - 1))
+						{
+							return 0;
+						}
+
 						mWordno = 0; // otherwise valid, and ends the sentence
                         return 1;
                     }                
@@ -330,7 +380,7 @@ int findstarter(int val)
     return last;
 }
 
-int nextword(int w)
+int nextword_nexts(int w)
 {
     int val = 0;
     int i;
@@ -358,6 +408,34 @@ int nextword(int w)
 	return gWordCounter.mNext[w][gWordCounter.mNext[w].size() - 1];
 }
 
+prevkeys gPrevKeys;
+
+int nextword(int w)
+{
+	int sum = 0;
+	gPrevKeys.shift();
+	gPrevKeys.a = w;
+	for (auto it = gWordCounter.mLongHit[gPrevKeys].begin(); it != gWordCounter.mLongHit[gPrevKeys].end(); ++it)
+	{
+		sum += it->second; 
+	}
+	if (sum == 0)
+	{
+		printf("*");
+		return nextword_nexts(w);
+	}
+	sum = rand() % sum;
+	int latest;
+	for (auto it = gWordCounter.mLongHit[gPrevKeys].begin(); it != gWordCounter.mLongHit[gPrevKeys].end(); ++it)
+	{
+		sum -= it->second;
+		if (sum <= 0)
+			return it->first;
+		latest = it->first;
+	}
+	return latest;
+}
+
 int main(int parc, char**pars)
 {
     if (parc < 2)
@@ -377,7 +455,7 @@ int main(int parc, char**pars)
 
 	int lines = 0;
 
-    while (!feof(f))
+    while (!feof(f))// && lines < 512)
     {
 		lines++;
 		if ((lines & 511) == 0)
@@ -415,13 +493,16 @@ int main(int parc, char**pars)
     for (i = 0; i < 50; i++)
     {
         s = findstarter(rand() % ssum);
+		gPrevKeys.reset();
         
         int ps = -1;
-        while ((gWordCounter.mFlags[s] & 2) == 0 && ps != s)
+		int max = 0;
+        while ((gWordCounter.mFlags[s] & 2) == 0 && ps != s && max < 50)
         {
             printf("%s ", gWordCounter.mWord[s]);
             ps = s;
             s = nextword(s);            
+			max++;
         }
         printf("%s ", gWordCounter.mWord[s]);
         printf("\n\n");
