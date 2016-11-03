@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <vector>
+#include <map>
 
 #define MAXTOKENS 8192
 #define MAXNEXTTOKENS 1024
@@ -49,9 +49,9 @@ int is_alpha(char *aString)
 class WordCounter
 {
 public:
-	std::vector<char*> mWord;
-	std::vector<int> mFlags, mHits, mHash, mValid;
-	std::vector<std::vector<int>> mNext, mNextHit;
+	std::map<int, char*> mWord;
+	std::map<int, int> mFlags, mHits, mHash, mValid;
+	std::map<int, std::map<int, int>> mNext, mNextHit;
 	int mPrevToken;
 	int mTokens;
     int mWordno;	
@@ -73,23 +73,18 @@ public:
 	{
 		mPrevToken = -1;
 		mTokens = 0;
-		mWordno = 0;
+		mWordno = 0;		
 	}
 
 	void tokenRef(int aCurrent)
 	{
-		std::vector<int> dummy;
 		int prev = mPrevToken;
-		if ((signed)mNext.size() <= prev)
-		{
-			mNext.push_back(dummy);
-			mNextHit.push_back(dummy);
-		}
 		mPrevToken = aCurrent;
 		if (prev != -1)
 		{
 			int i;
-			for (i = 0; i < (signed)mNext[prev].size(); i++)
+			int s = (signed)mNext[prev].size();
+			for (i = 0; i < s; i++)
 			{
 				if (mNext[prev][i] == aCurrent)
 				{
@@ -97,10 +92,11 @@ public:
 					return;
 				}
 			}
-			if (mNext[prev].size() < MAXNEXTTOKENS)
+			if (s < MAXNEXTTOKENS)
 			{
-				mNext[prev].push_back(aCurrent);
-				mNextHit[prev].push_back(1);
+				int i = s;
+				mNext[prev][i] = aCurrent;
+				mNextHit[prev][i] = 1;
 			}
 		}
 	}		
@@ -131,11 +127,11 @@ public:
 		if (mTokens < MAXTOKENS)
 		{
 			tokenRef(mTokens);
-			mWord.push_back(_strdup(aToken));
-			mHash.push_back(h);
-			mHits.push_back(1);
-			mFlags.push_back((mWordno == 0) ? 2 : (mWordno == 1 && toupper(*aToken) == *aToken) ? 1 : 0);
-		    mValid.push_back(0);
+			mWord[mTokens]=_strdup(aToken);
+			mHash[mTokens]=h;
+			mHits[mTokens]=1;
+			mFlags[mTokens]=(mWordno == 0) ? 2 : (mWordno == 1 && toupper(*aToken) == *aToken) ? 1 : 0;
+			mValid[mTokens]=0;
 			
 			mTokens++;        
 		}
