@@ -1,7 +1,9 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <vector>
 
 #define MAXTOKENS 8192
 #define MAXNEXTTOKENS 1024
@@ -47,18 +49,12 @@ int is_alpha(char *aString)
 class WordCounter
 {
 public:
-	char *mWord[MAXTOKENS];
-	int mFlags[MAXTOKENS];
-	int mHits[MAXTOKENS];
-	int mHash[MAXTOKENS];
-	int mUsed[MAXTOKENS];
-	int mNexts[MAXTOKENS];
-	int mNext[MAXTOKENS][MAXNEXTTOKENS];
-	int mNextHit[MAXTOKENS][MAXNEXTTOKENS];
-	int mValid[MAXTOKENS];
+	std::vector<char*> mWord;
+	std::vector<int> mFlags, mHits, mHash, mValid;
+	std::vector<std::vector<int>> mNext, mNextHit;
 	int mPrevToken;
 	int mTokens;
-    int wordno;	
+    int mWordno;	
 
 	int calcHash(char *aString)
 	{
@@ -77,17 +73,23 @@ public:
 	{
 		mPrevToken = -1;
 		mTokens = 0;
-		wordno = 0;
+		mWordno = 0;
 	}
 
 	void tokenRef(int aCurrent)
 	{
+		std::vector<int> dummy;
 		int prev = mPrevToken;
+		if ((signed)mNext.size() <= prev)
+		{
+			mNext.push_back(dummy);
+			mNextHit.push_back(dummy);
+		}
 		mPrevToken = aCurrent;
 		if (prev != -1)
 		{
 			int i;
-			for (i = 0; i < mNexts[prev]; i++)
+			for (i = 0; i < (signed)mNext[prev].size(); i++)
 			{
 				if (mNext[prev][i] == aCurrent)
 				{
@@ -95,12 +97,10 @@ public:
 					return;
 				}
 			}
-			if (mNexts[prev] < MAXNEXTTOKENS)
+			if (mNext[prev].size() < MAXNEXTTOKENS)
 			{
-				i = mNexts[prev];
-				mNext[prev][i] = aCurrent;
-				mNextHit[prev][i] = 1;
-				mNexts[prev]++;
+				mNext[prev].push_back(aCurrent);
+				mNextHit[prev].push_back(1);
 			}
 		}
 	}		
@@ -118,7 +118,7 @@ public:
 			{
 				tokenRef(i);
 				mHits[i]++;
-				mFlags[i] |= (wordno == 0) ? 2 : (wordno == 1 && toupper(*aToken) == *aToken) ? 1 : 0;
+				mFlags[i] |= (mWordno == 0) ? 2 : (mWordno == 1 && toupper(*aToken) == *aToken) ? 1 : 0;
 				return;
 			}
 		}
@@ -131,13 +131,11 @@ public:
 		if (mTokens < MAXTOKENS)
 		{
 			tokenRef(mTokens);
-			mWord[mTokens] = strdup(aToken);
-			mHash[mTokens] = h;
-			mHits[mTokens] = 1;
-			mUsed[mTokens] = 0;
-			mNexts[mTokens] = 0;
-			mFlags[mTokens] = (wordno == 0) ? 2 : (wordno == 1 && toupper(*aToken) == *aToken) ? 1 : 0;
-		    mValid[mTokens] = 0;
+			mWord.push_back(_strdup(aToken));
+			mHash.push_back(h);
+			mHits.push_back(1);
+			mFlags.push_back((mWordno == 0) ? 2 : (mWordno == 1 && toupper(*aToken) == *aToken) ? 1 : 0);
+		    mValid.push_back(0);
 			
 			mTokens++;        
 		}
@@ -175,16 +173,16 @@ public:
                     }
                     else
                     {
-                        if (wordno == 0)
+						if (mWordno == 0)
                         {                        
                             return 0; // and not valid if the only word in the sentence
                         }
                 	    if (allupper && len > 1 || len < 2)
                 	    {
-                	        wordno = 0; // all uppercase so we'll skip, but consider end of sentence anyway.
+							mWordno = 0; // all uppercase so we'll skip, but consider end of sentence anyway.
                 	        return 0;
                 	    }
-                        wordno = 0; // otherwise valid, and ends the sentence
+						mWordno = 0; // otherwise valid, and ends the sentence
                         return 1;
                     }                
                 }
@@ -202,7 +200,7 @@ public:
 	        return 0;
 		if (len < 2 && !is_alpha(aToken - 1))
 			return 0;
-	    wordno++;
+		mWordno++;
 	    return 1;
 	}
 	
@@ -211,7 +209,7 @@ public:
 	    int i;
 	    for (i = 0; i < mTokens; i++)
 	    {
-	        if (mNexts[i] > 0 || (mFlags[i] & 2) != 0)
+	        if (mNext[i].size() > 0 || (mFlags[i] & 2) != 0)
 	            mValid[i] = 1;
 	    }
 	}
@@ -340,7 +338,7 @@ int nextword(int w)
 {
     int val = 0;
     int i;
-    for (i = 0; i < gWordCounter.mNexts[w]; i++)
+	for (i = 0; i < (signed)gWordCounter.mNext[w].size(); i++)
     {
         if (gWordCounter.mValid[gWordCounter.mNext[w][i]])
         {
@@ -350,7 +348,7 @@ int nextword(int w)
     
     val = rand() % val;
     
-    for (i = 0; i < gWordCounter.mNexts[w]; i++)
+	for (i = 0; i < (signed)gWordCounter.mNext[w].size(); i++)
     {
         if (gWordCounter.mValid[gWordCounter.mNext[w][i]])
         {
@@ -361,7 +359,7 @@ int nextword(int w)
             }
         }
     }
-    return gWordCounter.mNext[w][gWordCounter.mNexts[w]-1];
+	return gWordCounter.mNext[w][gWordCounter.mNext[w].size() - 1];
 }
 
 int main(int parc, char**pars)
