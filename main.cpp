@@ -125,10 +125,12 @@ public:
 	std::unordered_map<int, char*> mWord;
 	std::unordered_map<int, int> mFlags, mHits, mHash;
 	std::unordered_map<prevkeys, std::unordered_map<int, int>> mLongHit;
+	char *mSentence[1024];	
 	prevkeys mPrevKeys;
 	int mPrevToken;
 	int mTokens;
-    int mWordno;	
+	int mWordno;
+	int mSentences;
 
 	int calcHash(char *aString)
 	{
@@ -148,6 +150,7 @@ public:
 		mPrevToken = -1;
 		mTokens = 0;
 		mWordno = 0;		
+		mSentences = 0;
 	}
 
 	void tokenRef(int aCurrent)
@@ -166,7 +169,7 @@ public:
 			mPrevKeys.reset();
 	}
 
-	void addWordcountToken(char *aToken)
+	void addWordcountToken(char *aToken, int aFirst, int aLast)
 	{
 		int h = calcHash(aToken);
 		int i;
@@ -179,7 +182,7 @@ public:
 			{
 				tokenRef(i);
 				mHits[i]++;
-				mFlags[i] |= (mWordno == 0) ? 2 : (mWordno == 1 && toupper(*aToken) == *aToken) ? 1 : 0;
+				mFlags[i] |= (aLast) ? 2 : (aFirst) ? 1 : 0;
 				return;
 			}
 		}
@@ -187,12 +190,12 @@ public:
 		mWord[mTokens] = _strdup(aToken);
 		mHash[mTokens] = h;
 		mHits[mTokens] = 1;
-		mFlags[mTokens] = (mWordno == 0) ? 2 : (mWordno == 1 && toupper(*aToken) == *aToken) ? 1 : 0;
+		mFlags[mTokens] = (aLast) ? 2 : (aFirst) ? 1 : 0;
 		tokenRef(mTokens);
 		mTokens++;
 	}
 
-	int valid(char *aToken)
+	int valid(char *aToken, int &aEnd)
 	{
 		int allupper = 1;
 		int len = 0;
@@ -226,15 +229,14 @@ public:
 						}
 						if (allupper && len > 1)
 						{
-							mWordno = 0; // all uppercase so we'll skip, but consider end of sentence anyway.
-							return 0;
+							return 0; // all caps, skip
 						}
 						if (len < 2 && !is_alpha(aToken - 1))
 						{
 							return 0;
 						}
 
-						mWordno = 0; // otherwise valid, and ends the sentence
+						aEnd = 1; // otherwise valid, and ends the sentence
                         return 1;
                     }                
                 }
@@ -252,8 +254,44 @@ public:
 	        return 0;
 		if (len < 2 && !is_alpha(aToken - 1))
 			return 0;
-		mWordno++;
 	    return 1;
+	}
+
+	void discardSentence()
+	{
+		int i;
+		for (i = 0; i < mWordno; i++)
+			free(mSentence[i]);
+		mWordno = 0;
+	}
+
+	void flushSentence()
+	{
+		int i;
+		// Make sure sentences start with an upper case character
+		if (toupper(mSentence[0][0]) == mSentence[0][0])
+		{
+			for (i = 0; i < mWordno; i++)
+				addWordcountToken(mSentence[i], i == 0, i == (mWordno - 1));
+			mSentences++;
+		}
+		discardSentence();
+	}
+
+	void checkWord(char *aString)
+	{
+		int end = 0;
+		if (valid(aString, end))
+		{
+			mSentence[mWordno] = _strdup(aString);
+			mWordno++;
+			if (end)
+				flushSentence();
+		}
+		else
+		{
+			discardSentence();
+		}
 	}
 	
 	void wordCount(char *aString)
@@ -264,21 +302,16 @@ public:
 		{
 			temp[p] = *aString;
 			if (*aString == '_' || 
-			    *aString == '-' || 
 			    *aString == '"' || 
 			    *aString == ' ' || 
 			    *aString == 0 || 
-			    *aString == '\t' || 
-			    *aString == '\r' || 
-			    *aString == '\n')
+			    *aString < ' ' ||
+				*aString > 'z')
 			{
 				temp[p] = 0;
 				if (p > 0)
 				{
-					if (valid(temp))
-						addWordcountToken(temp);
-					else
-						mPrevKeys.reset();
+					checkWord(temp);
 				}
 				p = 0;
 			}
@@ -289,8 +322,7 @@ public:
 			aString++;
 		}
 		temp[p] = 0;
-		if (valid(temp))
-		addWordcountToken(temp);
+		checkWord(temp);
 	}
 };
 
@@ -503,10 +535,11 @@ int main(int parc, char**pars)
     {
 		lines++;
 		if ((lines & 511) == 0)
-		printf("%d lines, %d tokens\r", lines, gWordCounter.mTokens);
+		printf("%d lines, %d tokens, %d sentences\r", lines, gWordCounter.mTokens, gWordCounter.mSentences);
         read_line(scratch, f);
         gWordCounter.wordCount(scratch);
     }
+
         
     fclose(f);
     
@@ -517,7 +550,7 @@ int main(int parc, char**pars)
         
 	qsort(idx, gWordCounter.mTokens, sizeof(int), tokencmp_for_qsort);
 	printf("\n\n");
-	printf("%d tokens total, %d starters, %d enders\n", gWordCounter.mTokens, countinstflag(1), countinstflag(2));
+	printf("%d tokens total, %d starters, %d enders, %d sentences\n", gWordCounter.mTokens, countinstflag(1), countinstflag(2), gWordCounter.mSentences);
 	printf("Most frequent words in source material:\n");
 	int total = gWordCounter.mTokens;
 	if (total > 99) total = 99;
