@@ -123,7 +123,7 @@ class WordCounter
 {
 public:
 	std::unordered_map<int, char*> mWord;
-	std::unordered_map<int, int> mFlags, mHits, mHash;
+	std::unordered_map<int, int> mFlags, mHits, mHash, mUsed;
 	std::unordered_map<prevkeys, std::unordered_map<int, int>> mLongHit;
 	char *mSentence[1024];	
 	prevkeys mPrevKeys;
@@ -204,6 +204,7 @@ public:
 			if ((*aToken >= 'a' && *aToken <= 'z') ||
 				(*aToken >= 'A' && *aToken <= 'Z') ||
 				*aToken == '\'' ||
+				*aToken == '´' ||
 				*aToken == ':' ||
 				*aToken == ';' ||
 				*aToken == '.' ||
@@ -444,10 +445,10 @@ int countinstflag(int flag)
 
 prevkeys gPrevKeys;
 int gWordNumber;
-
+int gOutputLine;
 //#define DEBUGPRINT
 
-#define SENTENCE_END_WEIGHT ((gWordNumber * gWordNumber) - 100)
+#define SENTENCE_END_WEIGHT if (gWordNumber < 5) {wt /= 4; if (!wt) wt = 1;} else {wt += (gWordNumber * gWordNumber);}
 // 
 #define DEEP_LINK_WEIGHT it->second * t.depth() * t.depth() * t.depth() * t.depth();
 // 1, 16, 81, 256, 625, 1296
@@ -468,9 +469,13 @@ int nextword(int w)
 		int n = 0;
 		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
 		{
-			n++;
-			sum += DEEP_LINK_WEIGHT;
-			if (gWordCounter.mFlags[it->second] & 2) sum += SENTENCE_END_WEIGHT;
+			if (gWordCounter.mUsed[it->second] != gOutputLine)
+			{
+				n++;
+				int wt = DEEP_LINK_WEIGHT;
+				if (gWordCounter.mFlags[it->second] & 2) SENTENCE_END_WEIGHT;
+				sum += wt;
+			}
 		}
 #ifdef DEBUGPRINT
 		printf("%c=%d,",
@@ -493,16 +498,20 @@ int nextword(int w)
 	{
 		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
 		{
-			sum -= DEEP_LINK_WEIGHT;;
-			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 10 - 100;
-			if (sum <= 0)
+			if (gWordCounter.mUsed[it->second] != gOutputLine)
 			{
+				int wt = DEEP_LINK_WEIGHT;
+				if (gWordCounter.mFlags[it->second] & 2) SENTENCE_END_WEIGHT;
+				sum -= wt;
+				if (sum <= 0)
+				{
 #ifdef DEBUGPRINT
-				printf("%c]", "?abcdef"[t.depth()]);
+					printf("%c]", "?abcdef"[t.depth()]);
 #endif
-				return it->first;
+					return it->first;
+				}
+				latest = it->first;
 			}
-			latest = it->first;
 		}
 		t.sink();
 	}
@@ -570,10 +579,11 @@ int main(int parc, char**pars)
     int s = 0, ssum = 0;
 
 	ssum = countflag(1);
-
-       
+	
+	gOutputLine = 0;
     for (i = 0; i < 250; i++)
     {
+		gOutputLine++;
         s = findstarter(rand() % ssum);
 		gPrevKeys.reset();
         
@@ -584,6 +594,8 @@ int main(int parc, char**pars)
             printf("%s ", gWordCounter.mWord[s]);
             ps = s;
             s = nextword(s);            
+			gWordCounter.mUsed[s] = gOutputLine;
+
 			gWordNumber++;
         }
         printf("%s ", gWordCounter.mWord[s]);
