@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#ifdef _MSC_VER
+#include <conio.h>
+#endif
 #include <unordered_map>
 
 struct prevkeys
@@ -600,7 +603,13 @@ int main(int parc, char**pars)
         }
         printf("%s ", gWordCounter.mWord[s]);
         printf("\n\n");
-        
+#ifdef _MSC_VER
+		if (parc > 2)
+		{
+			i = 0;
+			_getch();
+		}
+#endif        
     }
     
     return 0;
