@@ -307,7 +307,7 @@ public:
 			    *aString == 0 || 
 			    *aString < ' ' ||
 				*aString > 'z')
-			{
+			{ 
 				temp[p] = 0;
 				if (p > 0)
 				{
@@ -531,11 +531,13 @@ int main(int parc, char**pars)
 
 	int lines = 0;
 
-    while (!feof(f))// && lines < 512)
+	printf("Processing %s\n", pars[1]);
+
+    while (!feof(f))
     {
 		lines++;
-		if ((lines & 511) == 0)
-		printf("%d lines, %d tokens, %d sentences\r", lines, gWordCounter.mTokens, gWordCounter.mSentences);
+		if ((lines & 511) == 0 && parc > 2)
+			printf("%d lines, %d tokens, %d sentences\r", lines, gWordCounter.mTokens, gWordCounter.mSentences);
         read_line(scratch, f);
         gWordCounter.wordCount(scratch);
     }
