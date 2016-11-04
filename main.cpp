@@ -8,6 +8,46 @@
 #endif
 #include <unordered_map>
 
+// Based on implementation by Chris Lomont, www.lomont.org, public domain.
+// From game programming gems 7.
+class WELL512
+{
+public:
+	unsigned long mState[16];
+	unsigned int mIndex;
+
+	WELL512()
+	{
+		mIndex = 0;
+		srand(0);
+	}
+
+	void srand(int aSeed)
+	{
+		int i;
+		for (i = 0; i < 16; i++)
+		{
+			mState[i] = 0x7457edb7 + (i + 1) * aSeed;
+		}
+	}
+
+	unsigned long rand()
+	{
+		unsigned long a, b, c, d;
+		a = mState[mIndex];
+		c = mState[(mIndex + 13) & 15];
+		b = a ^ c ^ (a << 16) ^ (c << 15);
+		c = mState[(mIndex + 9) & 15];
+		c ^= (c >> 11);
+		a = mState[mIndex] = b ^ c;
+		d = a ^ ((a << 5) & 0xDA442D24UL);
+		mIndex = (mIndex + 15) & 15;
+		a = mState[mIndex];
+		mState[mIndex] = a ^ b ^ d ^ (a << 2) ^ (b << 18) ^ (c << 28);
+		return mState[mIndex];
+	}
+};
+
 struct prevkeys
 {
 	int a, b, c, d, e, f;
@@ -331,6 +371,7 @@ public:
 };
 
 WordCounter gWordCounter;
+WELL512 gRand;
 
 
 
@@ -492,9 +533,9 @@ int nextword(int w)
 #ifdef DEBUGPRINT
 		printf("?]");
 #endif
-		return findender(rand() % countflag(2));
+		return findender(gRand.rand() % countflag(2));
 	}
-	sum = rand() % sum;
+	sum = gRand.rand() % sum;
 	int latest;
 	t = gPrevKeys;
 	while (t.depth())
@@ -526,6 +567,8 @@ int nextword(int w)
 
 int main(int parc, char**pars)
 {
+	gRand.srand(0x7aa71337);
+
     if (parc < 2)
     {
         printf("Gimme a txt file\n");
@@ -587,7 +630,7 @@ int main(int parc, char**pars)
     for (i = 0; i < 250; i++)
     {
 		gOutputLine++;
-        s = findstarter(rand() % ssum);
+        s = findstarter(gRand.rand() % ssum);
 		gPrevKeys.reset();
         
         int ps = -1;
@@ -607,7 +650,13 @@ int main(int parc, char**pars)
 		if (parc > 2)
 		{
 			i = 0;
-			_getch();
+			printf("More?\r");
+			int c = _getch();
+			if (c == 'N' || c == 'n')
+			{
+				printf("                \r");
+				i = 300;
+			}
 		}
 #endif        
     }
