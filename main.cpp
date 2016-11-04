@@ -5,9 +5,6 @@
 #include <ctype.h>
 #include <unordered_map>
 
-#define MAXTOKENS 8192
-#define MAXNEXTTOKENS 1024
-
 struct prevkeys
 {
 	int a, b, c, d;
@@ -83,8 +80,7 @@ class WordCounter
 {
 public:
 	std::unordered_map<int, char*> mWord;
-	std::unordered_map<int, int> mFlags, mHits, mHash, mValid;
-	std::unordered_map<int, std::unordered_map<int, int>> mNext, mNextHit;
+	std::unordered_map<int, int> mFlags, mHits, mHash;
 	std::unordered_map<prevkeys, std::unordered_map<int, int>> mLongHit;
 	prevkeys mPrevKeys;
 	int mPrevToken;
@@ -115,35 +111,29 @@ public:
 	{
 		mLongHit[mPrevKeys][aCurrent]++;
 
+		// Populate shorter hits as well
+		if (mPrevKeys.d != -1)
+		{
+			prevkeys t = mPrevKeys;
+			t.d = -1;
+			mLongHit[t][aCurrent]++;
+			if (mPrevKeys.c != -1)
+			{
+				t.c = -1;
+				mLongHit[t][aCurrent]++;
+				if (mPrevKeys.b != -1)
+				{
+					t.b = -1;
+					mLongHit[t][aCurrent]++;
+				}
+			}
+		}
+
 		mPrevKeys.shift();
 		mPrevKeys.a = aCurrent;
 
 		if (mWordno == 0)
 			mPrevKeys.reset();
-
-
-
-		int prev = mPrevToken;
-		mPrevToken = aCurrent;
-		if (prev != -1)
-		{
-			int i;
-			int s = (signed)mNext[prev].size();
-			for (i = 0; i < s; i++)
-			{
-				if (mNext[prev][i] == aCurrent)
-				{
-					mNextHit[prev][i]++;
-					return;
-				}
-			}
-			if (s < MAXNEXTTOKENS)
-			{
-				int i = s;
-				mNext[prev][i] = aCurrent;
-				mNextHit[prev][i] = 1;
-			}
-		}
 	}
 
 	void addWordcountToken(char *aToken)
@@ -164,26 +154,12 @@ public:
 			}
 		}
 
-		// We don't actually care if we run out of tokens,
-		// as we're looking for the most frequent N tokens
-		// anyway; if a token hasn't appeared during the 
-		// MAXTOKENS, it's probably not all that frequent
-		// anyway.
-		if (mTokens < MAXTOKENS)
-		{
-			mWord[mTokens] = _strdup(aToken);
-			mHash[mTokens] = h;
-			mHits[mTokens] = 1;
-			mFlags[mTokens] = (mWordno == 0) ? 2 : (mWordno == 1 && toupper(*aToken) == *aToken) ? 1 : 0;
-			mValid[mTokens] = 0;
-			tokenRef(mTokens);
-
-			mTokens++;
-		}
-		else
-		{
-			mPrevToken = -1;
-		}
+		mWord[mTokens] = _strdup(aToken);
+		mHash[mTokens] = h;
+		mHits[mTokens] = 1;
+		mFlags[mTokens] = (mWordno == 0) ? 2 : (mWordno == 1 && toupper(*aToken) == *aToken) ? 1 : 0;
+		tokenRef(mTokens);
+		mTokens++;
 	}
 
 	int valid(char *aToken)
@@ -250,16 +226,6 @@ public:
 	    return 1;
 	}
 	
-	void validate()
-	{
-	    int i;
-	    for (i = 0; i < mTokens; i++)
-	    {
-	        if (mNext[i].size() > 0 || (mFlags[i] & 2) != 0)
-	            mValid[i] = 1;
-	    }
-	}
-
 	void wordCount(char *aString)
 	{
 		char temp[256];
@@ -279,8 +245,10 @@ public:
 				temp[p] = 0;
 				if (p > 0)
 				{
-				    if (valid(temp))
-					    addWordcountToken(temp);
+					if (valid(temp))
+						addWordcountToken(temp);
+					else
+						mPrevKeys.reset();
 				}
 				p = 0;
 			}
@@ -363,13 +331,13 @@ int tokencmp_for_qsort(const void * a, const void * b)
 	return gWordCounter.mHits[idx2] - gWordCounter.mHits[idx1];
 }
 
-int findstarter(int val)
+int findflag(int val, int flag)
 {
     int i;
     int last = 0;
     for (i = 0; i < gWordCounter.mTokens; i++)
     {
-        if ((gWordCounter.mFlags[i] & 1) != 0 && gWordCounter.mValid[i])
+        if ((gWordCounter.mFlags[i] & flag) != 0)
         {
             last = i;
             val -= gWordCounter.mHits[i];
@@ -380,59 +348,169 @@ int findstarter(int val)
     return last;
 }
 
-int nextword_nexts(int w)
+int findstarter(int val)
 {
-    int val = 0;
-    int i;
-	for (i = 0; i < (signed)gWordCounter.mNext[w].size(); i++)
-    {
-        if (gWordCounter.mValid[gWordCounter.mNext[w][i]])
-        {
-            val += gWordCounter.mNextHit[w][i];
-        }
-    }
-    
-    val = rand() % val;
-    
-	for (i = 0; i < (signed)gWordCounter.mNext[w].size(); i++)
-    {
-        if (gWordCounter.mValid[gWordCounter.mNext[w][i]])
-        {
-            val -= gWordCounter.mNextHit[w][i];
-            if (val <= 0)
-            {
-                return gWordCounter.mNext[w][i];
-            }
-        }
-    }
-	return gWordCounter.mNext[w][gWordCounter.mNext[w].size() - 1];
+	return findflag(val, 1);
+}
+
+int findender(int val)
+{
+	return findflag(val, 2);
+}
+
+int countflag(int flag)
+{
+	int i, ssum;
+	ssum = 0;
+	for (i = 0; i < gWordCounter.mTokens; i++)
+	{
+		if ((gWordCounter.mFlags[i] & 1) != 0) { ssum += gWordCounter.mHits[i]; }
+	}
+	return ssum;
+}
+
+int countinstflag(int flag)
+{
+	int i, ssum;
+	ssum = 0;
+	for (i = 0; i < gWordCounter.mTokens; i++)
+	{
+		if ((gWordCounter.mFlags[i] & 1) != 0) { ssum++; }
+	}
+	return ssum;
 }
 
 prevkeys gPrevKeys;
+int gWordNumber;
+
+//#define DEBUGPRINT
 
 int nextword(int w)
 {
-	int sum = 0;
+	int sum = 0, n = 0;
 	gPrevKeys.shift();
 	gPrevKeys.a = w;
-	for (auto it = gWordCounter.mLongHit[gPrevKeys].begin(); it != gWordCounter.mLongHit[gPrevKeys].end(); ++it)
+	prevkeys t = gPrevKeys;
+	for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
 	{
-		sum += it->second; 
+		n++;
+		sum += it->second * 80; 
+		if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10;
 	}
+
+	if (t.d != -1)
+	{
+		t.d = -1;
+		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
+		{
+			n++;
+			sum += it->second * 40;
+			if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10;
+		}
+	}
+	if (t.c != -1)
+	{
+		t.c = -1;
+		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
+		{
+			n++;
+			sum += it->second * 20;
+			if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10;
+		}
+	}
+	if (t.b != -1)
+	{
+		t.b = -1;
+		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
+		{
+			n++;
+			sum += it->second;
+			if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10;
+		}
+	}
+
+#ifdef DEBUGPRINT
+	printf("[%c%dz%d", 
+		(gPrevKeys.d != -1) ? 'd' : (gPrevKeys.c != -1) ? 'c' : (gPrevKeys.b != -1) ? 'b' : (gPrevKeys.a != -1) ? 'a' : '?',
+		n, sum);
+#endif
 	if (sum == 0)
 	{
-		printf("*");
-		return nextword_nexts(w);
+#ifdef DEBUGPRINT
+		printf("]");
+#endif
+		return findender(rand() % countflag(2));
 	}
 	sum = rand() % sum;
 	int latest;
-	for (auto it = gWordCounter.mLongHit[gPrevKeys].begin(); it != gWordCounter.mLongHit[gPrevKeys].end(); ++it)
+	t = gPrevKeys;
+	for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
 	{
-		sum -= it->second;
+		sum -= it->second * 80;
+		if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 20;
 		if (sum <= 0)
+		{
+#ifdef DEBUGPRINT
+			printf("%c]", (gPrevKeys.d != -1) ? 'd' : (gPrevKeys.c != -1) ? 'c' : (gPrevKeys.b != -1) ? 'b' : (gPrevKeys.a != -1) ? 'a' : '?');
+#endif
 			return it->first;
+		}
 		latest = it->first;
 	}
+	if (t.d != -1)
+	{
+		t.d = -1;
+		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
+		{
+			sum -= it->second * 40;
+			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 20;
+			if (sum <= 0)
+			{
+#ifdef DEBUGPRINT
+				printf("c]");
+#endif
+				return it->first;
+			}
+			latest = it->first;
+		}
+	}
+	if (t.c != -1)
+	{
+		t.c = -1;
+		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
+		{
+			sum -= it->second * 20;
+			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 20;
+			if (sum <= 0)
+			{
+#ifdef DEBUGPRINT
+				printf("b]");
+#endif
+				return it->first;
+			}
+			latest = it->first;
+		}
+	}
+	if (t.b != -1)
+	{
+		t.b = -1;
+		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
+		{
+			sum -= it->second;
+			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 20;
+			if (sum <= 0)
+			{
+#ifdef DEBUGPRINT
+				printf("a]");
+#endif
+				return it->first;
+			}
+			latest = it->first;
+		}
+	}
+#ifdef DEBUGPRINT
+	printf("?]");
+#endif
 	return latest;
 }
 
@@ -466,29 +544,32 @@ int main(int parc, char**pars)
         
     fclose(f);
     
-    gWordCounter.validate();
-    
-    int idx[MAXTOKENS];
+    int *idx = new int[gWordCounter.mTokens];
     int i;
-    for (i = 0; i < MAXTOKENS; i++)
+	for (i = 0; i < gWordCounter.mTokens; i++)
         idx[i] = i;
         
 	qsort(idx, gWordCounter.mTokens, sizeof(int), tokencmp_for_qsort);
-
+	printf("\n\n");
+	printf("%d tokens total, %d starters, %d enders\n", gWordCounter.mTokens, countinstflag(1), countinstflag(2));
 	printf("Most frequent words in source material:\n");
 	int total = gWordCounter.mTokens;
-	if (total > 25) total = 25;
+	if (total > 99) total = 99;
+	total /= 3;
     for (i = 0; i < total; i++)
     {
-        printf("%d. \"%s\"\t(%d)\n", i, gWordCounter.mWord[idx[i]], gWordCounter.mHits[idx[i]]);
+        printf("%2d. %-10s(%5d) %2d. %-10s(%5d) %2d. %-10s(%5d)\n",
+			i+1, gWordCounter.mWord[idx[i]], gWordCounter.mHits[idx[i]],
+			i+1+total, gWordCounter.mWord[idx[i+total]], gWordCounter.mHits[idx[i+total]],
+			i+1+total*2, gWordCounter.mWord[idx[i+total*2]], gWordCounter.mHits[idx[i+total*2]]
+			);
     }
 	printf("\n");
 
     int s = 0, ssum = 0;
-    for (i = 0; i < gWordCounter.mTokens; i++)
-    {
-        if ((gWordCounter.mFlags[i] & 1) != 0 && gWordCounter.mValid[i]) { s++; ssum+=gWordCounter.mHits[i]; }
-    }
+
+	ssum = countflag(1);
+
        
     for (i = 0; i < 50; i++)
     {
@@ -496,13 +577,13 @@ int main(int parc, char**pars)
 		gPrevKeys.reset();
         
         int ps = -1;
-		int max = 0;
-        while ((gWordCounter.mFlags[s] & 2) == 0 && ps != s && max < 50)
+		gWordNumber = 0;
+        while ((gWordCounter.mFlags[s] & 2) == 0 && ps != s && gWordNumber < 500)
         {
             printf("%s ", gWordCounter.mWord[s]);
             ps = s;
             s = nextword(s);            
-			max++;
+			gWordNumber++;
         }
         printf("%s ", gWordCounter.mWord[s]);
         printf("\n\n");
