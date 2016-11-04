@@ -395,7 +395,7 @@ int nextword(int w)
 	{
 		n++;
 		sum += it->second * 80; 
-		if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10;
+		if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10 - 100;
 	}
 
 	if (t.d != -1)
@@ -405,7 +405,7 @@ int nextword(int w)
 		{
 			n++;
 			sum += it->second * 40;
-			if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10;
+			if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10 - 100;
 		}
 	}
 	if (t.c != -1)
@@ -415,7 +415,7 @@ int nextword(int w)
 		{
 			n++;
 			sum += it->second * 20;
-			if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10;
+			if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10 - 100;
 		}
 	}
 	if (t.b != -1)
@@ -425,7 +425,7 @@ int nextword(int w)
 		{
 			n++;
 			sum += it->second;
-			if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10;
+			if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10 - 100;
 		}
 	}
 
@@ -447,7 +447,7 @@ int nextword(int w)
 	for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
 	{
 		sum -= it->second * 80;
-		if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 20;
+		if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 10 - 100;
 		if (sum <= 0)
 		{
 #ifdef DEBUGPRINT
@@ -463,7 +463,7 @@ int nextword(int w)
 		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
 		{
 			sum -= it->second * 40;
-			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 20;
+			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 10 - 100;
 			if (sum <= 0)
 			{
 #ifdef DEBUGPRINT
@@ -480,7 +480,7 @@ int nextword(int w)
 		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
 		{
 			sum -= it->second * 20;
-			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 20;
+			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 10 - 100;
 			if (sum <= 0)
 			{
 #ifdef DEBUGPRINT
@@ -497,7 +497,7 @@ int nextword(int w)
 		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
 		{
 			sum -= it->second;
-			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 20;
+			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 10 - 100;
 			if (sum <= 0)
 			{
 #ifdef DEBUGPRINT
@@ -571,7 +571,7 @@ int main(int parc, char**pars)
 	ssum = countflag(1);
 
        
-    for (i = 0; i < 50; i++)
+    for (i = 0; i < 250; i++)
     {
         s = findstarter(rand() % ssum);
 		gPrevKeys.reset();
