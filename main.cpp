@@ -7,25 +7,68 @@
 
 struct prevkeys
 {
-	int a, b, c, d;
+	int a, b, c, d, e, f;
 	prevkeys()
 	{
 		reset();
 	}
 	void reset()
 	{
-		a = b = c = d = -1;
+		a = b = c = d = e = f = -1;
 	}
 	void shift()
 	{
+		f = e;
+		e = d;
 		d = c;
 		c = b;
 		b = a;
 		a = -1;
 	}
+	int depth()
+	{
+		if (f != -1) return 6;
+		if (e != -1) return 5;
+		if (d != -1) return 4;
+		if (c != -1) return 3;
+		if (b != -1) return 2;
+		if (a != -1) return 1;
+		return 0;
+	}
+	void sink()
+	{
+		if (f != -1)
+		{
+			f = -1;
+		}
+		else
+		if (e != -1)
+		{
+			e = -1;
+		}
+		else
+		if (d != -1)
+		{
+			d = -1;
+		}
+		else
+		if (c != -1)
+		{
+			c = -1;
+		}
+		else
+		if (b != -1)
+		{
+			b = -1;
+		}
+		else
+		{
+			a = -1;
+		}
+	}
 	bool operator==(const prevkeys &other) const
 	{
-		return (a == other.a) && (b == other.b) && (c == other.c) && (d == other.d);
+		return (a == other.a) && (b == other.b) && (c == other.c) && (d == other.d) && (e == other.e) && (f == other.f);
 	}
 };
 
@@ -36,7 +79,7 @@ namespace std {
 	{
 		std::size_t operator()(const prevkeys& k) const
 		{
-			return (k.a << 1)^(k.b << 3)^(k.c << 2)^(k.d);
+			return (k.a << 1)^(k.b << 3)^(k.c << 2)^(k.d)^(k.e << 3)^(k.f << 1);
 		}
 	};
 
@@ -109,24 +152,11 @@ public:
 
 	void tokenRef(int aCurrent)
 	{
-		mLongHit[mPrevKeys][aCurrent]++;
-
-		// Populate shorter hits as well
-		if (mPrevKeys.d != -1)
+		prevkeys t = mPrevKeys;
+		while (t.depth())
 		{
-			prevkeys t = mPrevKeys;
-			t.d = -1;
 			mLongHit[t][aCurrent]++;
-			if (mPrevKeys.c != -1)
-			{
-				t.c = -1;
-				mLongHit[t][aCurrent]++;
-				if (mPrevKeys.b != -1)
-				{
-					t.b = -1;
-					mLongHit[t][aCurrent]++;
-				}
-			}
+			t.sink();
 		}
 
 		mPrevKeys.shift();
@@ -364,7 +394,7 @@ int countflag(int flag)
 	ssum = 0;
 	for (i = 0; i < gWordCounter.mTokens; i++)
 	{
-		if ((gWordCounter.mFlags[i] & 1) != 0) { ssum += gWordCounter.mHits[i]; }
+		if ((gWordCounter.mFlags[i] & flag) != 0) { ssum += gWordCounter.mHits[i]; }
 	}
 	return ssum;
 }
@@ -375,7 +405,7 @@ int countinstflag(int flag)
 	ssum = 0;
 	for (i = 0; i < gWordCounter.mTokens; i++)
 	{
-		if ((gWordCounter.mFlags[i] & 1) != 0) { ssum++; }
+		if ((gWordCounter.mFlags[i] & flag) != 0) { ssum++; }
 	}
 	return ssum;
 }
@@ -385,128 +415,64 @@ int gWordNumber;
 
 //#define DEBUGPRINT
 
+#define SENTENCE_END_WEIGHT ((gWordNumber * gWordNumber) - 100)
+// 
+#define DEEP_LINK_WEIGHT it->second * t.depth() * t.depth() * t.depth() * t.depth();
+// 1, 16, 81, 256, 625, 1296
+
 int nextword(int w)
 {
 	int sum = 0, n = 0;
 	gPrevKeys.shift();
 	gPrevKeys.a = w;
 	prevkeys t = gPrevKeys;
-	for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
-	{
-		n++;
-		sum += it->second * 80; 
-		if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10 - 100;
-	}
-
-	if (t.d != -1)
-	{
-		t.d = -1;
-		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
-		{
-			n++;
-			sum += it->second * 40;
-			if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10 - 100;
-		}
-	}
-	if (t.c != -1)
-	{
-		t.c = -1;
-		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
-		{
-			n++;
-			sum += it->second * 20;
-			if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10 - 100;
-		}
-	}
-	if (t.b != -1)
-	{
-		t.b = -1;
-		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
-		{
-			n++;
-			sum += it->second;
-			if (gWordCounter.mFlags[it->second] & 2) sum += gWordNumber * gWordNumber / 10 - 100;
-		}
-	}
 
 #ifdef DEBUGPRINT
-	printf("[%c%dz%d", 
-		(gPrevKeys.d != -1) ? 'd' : (gPrevKeys.c != -1) ? 'c' : (gPrevKeys.b != -1) ? 'b' : (gPrevKeys.a != -1) ? 'a' : '?',
-		n, sum);
+	printf("[");
 #endif
+
+	while (t.depth())
+	{
+		int n = 0;
+		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
+		{
+			n++;
+			sum += DEEP_LINK_WEIGHT;
+			if (gWordCounter.mFlags[it->second] & 2) sum += SENTENCE_END_WEIGHT;
+		}
+#ifdef DEBUGPRINT
+		printf("%c=%d,",
+			"?abcdef"[t.depth()], n);
+#endif
+		t.sink();
+	}
+
 	if (sum == 0)
 	{
 #ifdef DEBUGPRINT
-		printf("]");
+		printf("?]");
 #endif
 		return findender(rand() % countflag(2));
 	}
 	sum = rand() % sum;
 	int latest;
 	t = gPrevKeys;
-	for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
+	while (t.depth())
 	{
-		sum -= it->second * 80;
-		if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 10 - 100;
-		if (sum <= 0)
-		{
-#ifdef DEBUGPRINT
-			printf("%c]", (gPrevKeys.d != -1) ? 'd' : (gPrevKeys.c != -1) ? 'c' : (gPrevKeys.b != -1) ? 'b' : (gPrevKeys.a != -1) ? 'a' : '?');
-#endif
-			return it->first;
-		}
-		latest = it->first;
-	}
-	if (t.d != -1)
-	{
-		t.d = -1;
 		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
 		{
-			sum -= it->second * 40;
+			sum -= DEEP_LINK_WEIGHT;;
 			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 10 - 100;
 			if (sum <= 0)
 			{
 #ifdef DEBUGPRINT
-				printf("c]");
+				printf("%c]", "?abcdef"[t.depth()]);
 #endif
 				return it->first;
 			}
 			latest = it->first;
 		}
-	}
-	if (t.c != -1)
-	{
-		t.c = -1;
-		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
-		{
-			sum -= it->second * 20;
-			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 10 - 100;
-			if (sum <= 0)
-			{
-#ifdef DEBUGPRINT
-				printf("b]");
-#endif
-				return it->first;
-			}
-			latest = it->first;
-		}
-	}
-	if (t.b != -1)
-	{
-		t.b = -1;
-		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
-		{
-			sum -= it->second;
-			if (gWordCounter.mFlags[it->second] & 2) sum -= gWordNumber * gWordNumber / 10 - 100;
-			if (sum <= 0)
-			{
-#ifdef DEBUGPRINT
-				printf("a]");
-#endif
-				return it->first;
-			}
-			latest = it->first;
-		}
+		t.sink();
 	}
 #ifdef DEBUGPRINT
 	printf("?]");
