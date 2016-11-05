@@ -48,6 +48,8 @@ public:
 	}
 };
 
+int gMaxDepth = 6;
+
 struct prevkeys
 {
 	int a, b, c, d, e, f;
@@ -61,11 +63,11 @@ struct prevkeys
 	}
 	void shift()
 	{
-		f = e;
-		e = d;
-		d = c;
-		c = b;
-		b = a;
+		if (gMaxDepth > 5) f = e;
+		if (gMaxDepth > 4) e = d;
+		if (gMaxDepth > 3) d = c;
+		if (gMaxDepth > 2) c = b;
+		if (gMaxDepth > 1) b = a;
 		a = -1;
 	}
 	int depth()
@@ -490,9 +492,9 @@ int countinstflag(int flag)
 prevkeys gPrevKeys;
 int gWordNumber;
 int gOutputLine;
-//#define DEBUGPRINT
-
-#define SENTENCE_END_WEIGHT if (gWordNumber < 5) {wt /= 4; if (!wt) wt = 1;} else {wt += (gWordNumber * gWordNumber);}
+int gWantLongSentences = 10;
+int gDebugLevel = 0;
+#define SENTENCE_END_WEIGHT if (gWordNumber < 5) {wt /= gWantLongSentences; if (!wt) wt = 0;} else {wt += (gWordNumber * gWordNumber);}
 // 
 #define DEEP_LINK_WEIGHT it->second * t.depth() * t.depth() * t.depth() * t.depth();
 // 1, 16, 81, 256, 625, 1296
@@ -504,54 +506,67 @@ int nextword(int w)
 	gPrevKeys.a = w;
 	prevkeys t = gPrevKeys;
 
-#ifdef DEBUGPRINT
-	printf("[");
-#endif
+	if (gDebugLevel == 1)
+		printf("[");
+
 
 	while (t.depth())
 	{
 		int n = 0;
 		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
 		{
-			if (gWordCounter.mUsed[it->second] != gOutputLine)
+			if (gWordCounter.mUsed[it->first] != gOutputLine)
 			{
 				n++;
 				int wt = DEEP_LINK_WEIGHT;
-				if (gWordCounter.mFlags[it->second] & 2) SENTENCE_END_WEIGHT;
+				if (gWordCounter.mFlags[it->first] & 2) SENTENCE_END_WEIGHT;
 				sum += wt;
+				if (gDebugLevel == 2)
+					printf("%d->%s (%d)\n", t.depth(), gWordCounter.mWord[it->first], wt);
 			}
 		}
-#ifdef DEBUGPRINT
-		printf("%c=%d,",
-			"?abcdef"[t.depth()], n);
-#endif
+		if (gDebugLevel == 1)
+			printf("%c=%d,",
+				"?abcdef"[t.depth()], n);
+
 		t.sink();
 	}
 
-	if (sum == 0)
+	if (gDebugLevel == 2)
+		printf("SUM: %d\n", sum);
+		if (sum == 0)
 	{
-#ifdef DEBUGPRINT
-		printf("?]");
-#endif
+		if (gDebugLevel == 1)
+			printf("?]");
+
 		return findender(gRand.rand() % countflag(2));
 	}
 	sum = gRand.rand() % sum;
+	if (gDebugLevel == 2)
+		printf("RANDOM: %d\n", sum);
+
 	int latest;
 	t = gPrevKeys;
 	while (t.depth())
 	{
 		for (auto it = gWordCounter.mLongHit[t].begin(); it != gWordCounter.mLongHit[t].end(); ++it)
 		{
-			if (gWordCounter.mUsed[it->second] != gOutputLine)
+			if (gWordCounter.mUsed[it->first] != gOutputLine)
 			{
 				int wt = DEEP_LINK_WEIGHT;
-				if (gWordCounter.mFlags[it->second] & 2) SENTENCE_END_WEIGHT;
+				if (gWordCounter.mFlags[it->first] & 2) SENTENCE_END_WEIGHT;
+
 				sum -= wt;
+
+				if (gDebugLevel == 2)
+					printf("(%s - %d -> %d)\n", gWordCounter.mWord[it->first], wt, sum);
+
 				if (sum <= 0)
 				{
-#ifdef DEBUGPRINT
-					printf("%c]", "?abcdef"[t.depth()]);
-#endif
+					if (gDebugLevel == 1)
+						printf("%c]", "?abcdef"[t.depth()]);
+					if (gDebugLevel == 2)
+						printf("SELECTED: %s (depth:%d)\n", gWordCounter.mWord[it->first], t.depth());
 					return it->first;
 				}
 				latest = it->first;
@@ -559,11 +574,13 @@ int nextword(int w)
 		}
 		t.sink();
 	}
-#ifdef DEBUGPRINT
-	printf("?]");
-#endif
+	if (gDebugLevel == 1)
+		printf("?]");
+
 	return latest;
 }
+
+int gUsageMode = 0;
 
 int main(int parc, char**pars)
 {
@@ -571,27 +588,72 @@ int main(int parc, char**pars)
 
     if (parc < 2)
     {
-        printf("Gimme a txt file\n");
+        printf("%s textfile.txt [options]\n"
+				"-i interactive mode\n"
+				"-d debug output\n"
+				"-a debug analysis output (really verbose)\n"
+				"-l longer sentences (can be used multiple times)\n"
+				"-6 max 6 word chain\n"
+				"-5 max 5 word chain\n"
+				"-4 max 4 word chain\n"
+				"-3 max 3 word chain\n"
+				"-2 max 2 word chain\n"
+				"-b markdown output (book mode)\n"
+				, pars[0]);
         return 0;
     }
     
-    FILE * f = fopen(pars[1], "r");
+	int fnameidx = -1;
+	int i;
+	for (i = 1; i < parc; i++)
+	{
+		if (pars[i][0] == '-')
+		{
+			switch (pars[i][1])
+			{
+			case 'i': gUsageMode = 1; break;
+			case 'd': gDebugLevel = 1; break;
+			case 'a': gDebugLevel = 2; break;
+			case 'l': gWantLongSentences++; break;
+			case '6': gMaxDepth = 6; break;
+			case '5': gMaxDepth = 5; break;
+			case '4': gMaxDepth = 4; break;
+			case '3': gMaxDepth = 3; break;
+			case '2': gMaxDepth = 2; break;
+			case 'b': gUsageMode = 2; break;
+			default:
+				printf("Unknown option %s\n", pars[i]);
+				return -1;
+			}
+		}
+		else
+		{
+			fnameidx = i;
+		}
+	}
+
+	if (fnameidx == -1)
+	{
+		printf("No filename given\n");
+	}
+
+	FILE * f = fopen(pars[fnameidx], "r");
     char scratch[8192];
     
 	if (!f)
 	{
-		printf("File not found\n");
+		printf("File %s not found\n", pars[fnameidx]);
 		return 0;
 	}
 
 	int lines = 0;
 
-	printf("Processing %s\n", pars[1]);
+	printf("Processing %s\n", pars[fnameidx]);
 
     while (!feof(f))
     {
 		lines++;
-		if ((lines & 511) == 0 && parc > 2)
+		if ((lines & 511) == 0 && gUsageMode == 1)
 			printf("%d lines, %d tokens, %d sentences\r", lines, gWordCounter.mTokens, gWordCounter.mSentences);
         read_line(scratch, f);
         gWordCounter.wordCount(scratch);
@@ -601,7 +663,6 @@ int main(int parc, char**pars)
     fclose(f);
     
     int *idx = new int[gWordCounter.mTokens];
-    int i;
 	for (i = 0; i < gWordCounter.mTokens; i++)
         idx[i] = i;
         
@@ -647,7 +708,7 @@ int main(int parc, char**pars)
         printf("%s ", gWordCounter.mWord[s]);
         printf("\n\n");
 #ifdef _MSC_VER
-		if (parc > 2)
+		if (gUsageMode == 1)
 		{
 			i = 0;
 			printf("More?\r");
