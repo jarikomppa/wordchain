@@ -7,6 +7,17 @@
 #include <conio.h>
 #endif
 #include <unordered_map>
+#include <string>
+
+std::unordered_map<std::string, int> gDupeBase;
+int gUsageMode = 0;
+
+int dupecheck(char *aString)
+{
+	std::string key = aString;
+	gDupeBase[key]++;
+	return gDupeBase[key];
+}
 
 // Based on implementation by Chris Lomont, www.lomont.org, public domain.
 // From game programming gems 7.
@@ -320,7 +331,21 @@ public:
 			for (i = 0; i < mWordno; i++)
 				addWordcountToken(mSentence[i], i == 0, i == (mWordno - 1));
 			mSentences++;
+
+			if (gUsageMode == 2)
+			{
+				char temp[4096];
+				temp[0] = 0;
+				for (i = 0; i < mWordno; i++)
+				{
+					strcat(temp, mSentence[i]);
+					if (i < mWordno - 1)
+						strcat(temp, " ");
+				}
+				dupecheck(temp);
+			}
 		}
+
 		discardSentence();
 	}
 
@@ -492,9 +517,10 @@ int countinstflag(int flag)
 prevkeys gPrevKeys;
 int gWordNumber;
 int gOutputLine;
-int gWantLongSentences = 10;
+int gWantLongSentences = 2;
+int gSentenceLength = 5;
 int gDebugLevel = 0;
-#define SENTENCE_END_WEIGHT if (gWordNumber < 5) {wt /= gWantLongSentences; if (!wt) wt = 0;} else {wt += (gWordNumber * gWordNumber);}
+#define SENTENCE_END_WEIGHT if (gWordNumber < gSentenceLength) {wt /= gWantLongSentences; if (!wt) wt = 0;} else {wt += (gWordNumber * gWordNumber) / 10;}
 // 
 #define DEEP_LINK_WEIGHT it->second * t.depth() * t.depth() * t.depth() * t.depth();
 // 1, 16, 81, 256, 625, 1296
@@ -580,7 +606,6 @@ int nextword(int w)
 	return latest;
 }
 
-int gUsageMode = 0;
 
 int main(int parc, char**pars)
 {
@@ -593,6 +618,7 @@ int main(int parc, char**pars)
 				"-d debug output\n"
 				"-a debug analysis output (really verbose)\n"
 				"-l longer sentences (can be used multiple times)\n"
+				"-s increase desired sentence length (can be used multiple times)\n"
 				"-6 max 6 word chain\n"
 				"-5 max 5 word chain\n"
 				"-4 max 4 word chain\n"
@@ -615,6 +641,7 @@ int main(int parc, char**pars)
 			case 'd': gDebugLevel = 1; break;
 			case 'a': gDebugLevel = 2; break;
 			case 'l': gWantLongSentences++; break;
+			case 's': gSentenceLength++; break;
 			case '6': gMaxDepth = 6; break;
 			case '5': gMaxDepth = 5; break;
 			case '4': gMaxDepth = 4; break;
@@ -648,7 +675,15 @@ int main(int parc, char**pars)
 
 	int lines = 0;
 
-	printf("Processing %s\n", pars[fnameidx]);
+	if (gUsageMode == 2)
+	{
+		if (strrchr(pars[fnameidx], '.')) *strrchr(pars[fnameidx], '.') = 0;
+		printf("# %s\n", pars[fnameidx]);
+	}
+	else
+	{
+		printf("Processing %s\n", pars[fnameidx]);
+	}
 
     while (!feof(f))
     {
@@ -668,58 +703,121 @@ int main(int parc, char**pars)
         
 	qsort(idx, gWordCounter.mTokens, sizeof(int), tokencmp_for_qsort);
 	printf("\n\n");
-	printf("%d tokens total, %d starters, %d enders, %d sentences\n", gWordCounter.mTokens, countinstflag(1), countinstflag(2), gWordCounter.mSentences);
-	printf("Most frequent words in source material:\n");
+	printf("%d tokens total, %d starters, %d enders, %d sentences\n\n", gWordCounter.mTokens, countinstflag(1), countinstflag(2), gWordCounter.mSentences);
+	printf("Most frequent words in source material:\n\n");
 	int total = gWordCounter.mTokens;
 	if (total > 99) total = 99;
 	total /= 3;
+
+	if (gUsageMode == 2)
+	{
+		printf("|No|Word|No|Word|No|Word|\n"
+			   "|:-|----|:-|----|:-|----|\n");
+	}
+
     for (i = 0; i < total; i++)
     {
-        printf("%2d. %-10s(%5d) %2d. %-10s(%5d) %2d. %-10s(%5d)\n",
-			i+1, gWordCounter.mWord[idx[i]], gWordCounter.mHits[idx[i]],
-			i+1+total, gWordCounter.mWord[idx[i+total]], gWordCounter.mHits[idx[i+total]],
-			i+1+total*2, gWordCounter.mWord[idx[i+total*2]], gWordCounter.mHits[idx[i+total*2]]
-			);
+		if (gUsageMode == 2)
+		{
+			printf("|%d|%s (%d)|%d|%s (%d)|%d|%s (%d)|\n",
+				i + 1, gWordCounter.mWord[idx[i]], gWordCounter.mHits[idx[i]],
+				i + 1 + total, gWordCounter.mWord[idx[i + total]], gWordCounter.mHits[idx[i + total]],
+				i + 1 + total * 2, gWordCounter.mWord[idx[i + total * 2]], gWordCounter.mHits[idx[i + total * 2]]
+				);
+		}
+		else
+		{
+			printf("%2d. %-10s(%5d) %2d. %-10s(%5d) %2d. %-10s(%5d)\n",
+				i + 1, gWordCounter.mWord[idx[i]], gWordCounter.mHits[idx[i]],
+				i + 1 + total, gWordCounter.mWord[idx[i + total]], gWordCounter.mHits[idx[i + total]],
+				i + 1 + total * 2, gWordCounter.mWord[idx[i + total * 2]], gWordCounter.mHits[idx[i + total * 2]]
+				);
+		}
     }
-	printf("\n");
+	printf("\n\n");
 
     int s = 0, ssum = 0;
 
 	ssum = countflag(1);
 	
-	gOutputLine = 0;
-    for (i = 0; i < 250; i++)
-    {
-		gOutputLine++;
-        s = findstarter(gRand.rand() % ssum);
-		gPrevKeys.reset();
-        
-        int ps = -1;
-		gWordNumber = 0;
-        while ((gWordCounter.mFlags[s] & 2) == 0 && ps != s && gWordNumber < 500)
-        {
-            printf("%s ", gWordCounter.mWord[s]);
-            ps = s;
-            s = nextword(s);            
-			gWordCounter.mUsed[s] = gOutputLine;
-
-			gWordNumber++;
-        }
-        printf("%s ", gWordCounter.mWord[s]);
-        printf("\n\n");
-#ifdef _MSC_VER
-		if (gUsageMode == 1)
+	if (gUsageMode == 2)
+	{
+		char temp[4096];
+		int j;
+		for (j = 6; j > 1; j--)
 		{
-			i = 0;
-			printf("More?\r");
-			int c = _getch();
-			if (c == 'N' || c == 'n')
+			gMaxDepth = j;
+			printf("## %d Word Chains\n\n", j);
+			gOutputLine = 0;
+			for (i = 0; i < 100; i++)
 			{
-				printf("                \r");
-				i = 300;
+				temp[0] = 0;
+				gOutputLine++;
+				s = findstarter(gRand.rand() % ssum);
+				gPrevKeys.reset();
+
+				int ps = -1;
+				gWordNumber = 0;
+				while ((gWordCounter.mFlags[s] & 2) == 0 && ps != s && gWordNumber < 500)
+				{
+					strcat(temp, gWordCounter.mWord[s]);
+					strcat(temp, " ");
+					ps = s;
+					s = nextword(s);
+					gWordCounter.mUsed[s] = gOutputLine;
+
+					gWordNumber++;
+				}
+				strcat(temp, gWordCounter.mWord[s]);
+				if (dupecheck(temp) == 1)
+				{
+					printf("%s", temp);
+					if (i % 5 == 4)
+						printf("\n\n");
+					else
+						printf(" ");
+				}
+				else
+					i--;
 			}
 		}
+	}
+	else
+	{
+		gOutputLine = 0;
+		for (i = 0; i < 250; i++)
+		{
+			gOutputLine++;
+			s = findstarter(gRand.rand() % ssum);
+			gPrevKeys.reset();
+
+			int ps = -1;
+			gWordNumber = 0;
+			while ((gWordCounter.mFlags[s] & 2) == 0 && ps != s && gWordNumber < 500)
+			{
+				printf("%s ", gWordCounter.mWord[s]);
+				ps = s;
+				s = nextword(s);
+				gWordCounter.mUsed[s] = gOutputLine;
+
+				gWordNumber++;
+			}
+			printf("%s ", gWordCounter.mWord[s]);
+			printf("\n\n");
+#ifdef _MSC_VER
+			if (gUsageMode == 1)
+			{
+				i = 0;
+				printf("More?\r");
+				int c = _getch();
+				if (c == 'N' || c == 'n')
+				{
+					printf("                \r");
+					i = 300;
+				}
+			}
 #endif        
+		}
     }
     
     return 0;
